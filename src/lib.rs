@@ -7,8 +7,8 @@ pub enum Rounding {
     AwayFromZero,
 }
 
-pub fn checked_div_rem(left: i32, right: i32, rounding: Rounding)
-    -> Option<(i32, i32)>
+pub fn checked_divide(left: i32, right: i32, rounding: Rounding)
+    -> Option<i32>
 {
     let Some(q) = left.checked_div(right) else {
         return None;
@@ -16,50 +16,65 @@ pub fn checked_div_rem(left: i32, right: i32, rounding: Rounding)
 
     let remain = left % right;
     if remain == 0 {
-        return Some((q, 0));
+        return Some(q);
     }
 
-    let ret = match rounding {
+    Some(match rounding {
         Rounding::Floor => {
             if (left ^ right) > 0 {
-                (q, remain)
+                q
             } else {
-                (q - 1, remain + right)
+                q - 1
             }
         }
         Rounding::Ceiling => {
             if (left ^ right) > 0 {
-                (q + 1, remain - right)
+                q + 1
             } else {
-                (q, remain)
+                q
             }
         }
         Rounding::Round => {
-            if remain.abs() * 2 > right.abs() {
+            if remain.unsigned_abs() >= right.unsigned_abs() / 2 {
                 if (left ^ right) > 0 {
-                    (q + 1, remain - right)
+                    q + 1
                 } else {
-                    (q - 1, remain + right)
+                    q - 1
                 }
             } else {
-                (q, remain)
+                q
             }
         }
         Rounding::TowardsZero => {
-            (q, remain)
+            q
         }
         Rounding::AwayFromZero => {
             if (left ^ right) > 0 {
-                (q + 1, remain - right)
+                q + 1
             } else {
-                (q - 1, remain + right)
+                q - 1
             }
         }
-    };
-    Some(ret)
+    })
 }
 
-pub fn checked_div(left: i32, right: i32, rounding: Rounding, cum_error: &mut i32)
+// return: abs(a + b) < abs(b)
+fn add_cmp_abs(a: i32, b: i32) -> bool {
+    match a.checked_add(b) {
+        None => false,
+        Some(n) => n.unsigned_abs() < b.unsigned_abs(),
+    }
+}
+
+// return: abs(a - b) < abs(b)
+fn sub_cmp_abs(a: i32, b: i32) -> bool {
+    match a.checked_sub(b) {
+        None => false,
+        Some(n) => n.unsigned_abs() < b.unsigned_abs(),
+    }
+}
+
+pub fn checked_divide_with_cum_error(left: i32, right: i32, rounding: Rounding, cum_error: &mut i32)
     -> Option<i32>
 {
     let Some(mut q) = left.checked_div(right) else {
@@ -71,90 +86,81 @@ pub fn checked_div(left: i32, right: i32, rounding: Rounding, cum_error: &mut i3
         return Some(q);
     }
 
-    let ret = match rounding {
-        Rounding::Floor => {
-            *cum_error += remain;
-            if (left ^ right) > 0 {
-                if cum_error.abs() >= right.abs() {
-                    *cum_error -= right;
-                    q += 1;
-                }
-            } else {
-                if (*cum_error + right).abs() < right.abs() {
-                    *cum_error += right;
-                    q -= 1;
-                }
-            }
-            q
-        }
-        Rounding::Ceiling => {
-            *cum_error += remain;
-            if (left ^ right) > 0 {
-                if (*cum_error - right).abs() < right.abs() {
-                    *cum_error -= right;
-                    q += 1;
-                }
-            } else {
-                if cum_error.abs() >= right.abs() {
-                    *cum_error += right;
-                    q -= 1;
-                }
-            }
-            /*
-            if (left ^ right) > 0 {
-                *cum_error -= right;
-                q += 1;
-            }
-            if cum_error.abs() >= right.abs() {
-                *cum_error += right;
-                q -= 1;
-            }
-            */
-            q
-        }
-        Rounding::Round => {
-            *cum_error += remain;
-            if cum_error.abs() * 2 > right.abs() {
-                if (left ^ right) > 0 {
-                    *cum_error -= right;
-                    q += 1;
-                } else {
-                    *cum_error += right;
-                    q -= 1;
-                }
-            }
-            q
-        }
-        Rounding::TowardsZero => {
-            *cum_error += remain;
-            if cum_error.abs() >= right.abs() {
-                if (left ^ right) > 0 {
-                    *cum_error -= right;
-                    q += 1;
-                } else {
-                    *cum_error += right;
-                    q -= 1;
-                }
-            }
-            q
-        }
-        Rounding::AwayFromZero => {
-            *cum_error += remain;
-            if (left ^ right) > 0 {
-                if (*cum_error - right).abs() < right.abs() {
-                    *cum_error -= right;
-                    q += 1;
-                }
-            } else {
-                if (*cum_error + right).abs() < right.abs() {
-                    *cum_error += right;
-                    q -= 1;
-                }
-            }
-            q
+    let Some(tmpsum) = cum_error.checked_add(remain) else {
+        if (left ^ right) > 0 {
+            *cum_error += remain - right;
+            return Some(q + 1);
+        } else {
+            *cum_error += remain + right;
+            return Some(q - 1);
         }
     };
-    Some(ret)
+    *cum_error = tmpsum;
+
+    match rounding {
+        Rounding::Floor => {
+            if (left ^ right) > 0 {
+                if cum_error.unsigned_abs() >= right.unsigned_abs() {
+                    *cum_error -= right;
+                    q += 1;
+                }
+            } else {
+                if add_cmp_abs(*cum_error, right) {
+                    *cum_error += right;
+                    q -= 1;
+                }
+            }
+        }
+        Rounding::Ceiling => {
+            if (left ^ right) > 0 {
+                if sub_cmp_abs(*cum_error, right) {
+                    *cum_error -= right;
+                    q += 1;
+                }
+            } else {
+                if cum_error.unsigned_abs() >= right.unsigned_abs() {
+                    *cum_error += right;
+                    q -= 1;
+                }
+            }
+        }
+        Rounding::Round => {
+            if cum_error.unsigned_abs() >= right.unsigned_abs() / 2 {
+                if (left ^ right) > 0 {
+                    *cum_error -= right;
+                    q += 1;
+                } else {
+                    *cum_error += right;
+                    q -= 1;
+                }
+            }
+        }
+        Rounding::TowardsZero => {
+            if cum_error.unsigned_abs() >= right.unsigned_abs() {
+                if (left ^ right) > 0 {
+                    *cum_error -= right;
+                    q += 1;
+                } else {
+                    *cum_error += right;
+                    q -= 1;
+                }
+            }
+        }
+        Rounding::AwayFromZero => {
+            if (left ^ right) > 0 {
+                if sub_cmp_abs(*cum_error, right) {
+                    *cum_error -= right;
+                    q += 1;
+                }
+            } else {
+                if add_cmp_abs(*cum_error, right) {
+                    *cum_error += right;
+                    q -= 1;
+                }
+            }
+        }
+    }
+    Some(q)
 }
 
 #[cfg(test)]
@@ -170,15 +176,15 @@ mod tests {
         while isum.unsigned_abs() < a.unsigned_abs() {
             let ix = i0 + i1;
 
-            ret += checked_div(ix, b, rounding, &mut cum_error).unwrap();
+            ret += checked_divide_with_cum_error(ix, b, rounding, &mut cum_error).unwrap();
             i0 = i1;
             i1 = ix;
             isum += ix;
 
-            let (q, r) = checked_div_rem(isum, b, rounding).unwrap();
-            if q != ret || r != cum_error {
-                println!("fail");
-            }
+            let q = checked_divide(isum, b, rounding).unwrap();
+            let r = isum - q * b;
+            assert_eq!(q, ret);
+            assert_eq!(r, cum_error);
 
             if isum.abs() >= a.abs() {
                 break;
@@ -203,63 +209,66 @@ mod tests {
 
     #[test]
     fn many_test() {
-        test(14, 3);
-        //return;
-
-        test(11000, 1);
-        test(11000, 1);
-        test(11000, 2);
-        test(1100, 1);
-        test(1100, 1);
-        test(1100, 2);
-        test(11000, 1);
-        test(11000, 1);
-        test(11000, 2);
-        test(1100, 1);
-        test(1100, 1);
-        test(1100, 2);
-        test(110001, 1);
-        test(110001, 1);
-        test(110001, 2);
-        test(11001, 1);
-        test(11001, 1);
-        test(11001, 2);
-        test(110001, 1);
-        test(110001, 1);
-        test(110001, 2);
-        test(11001, 1);
-        test(11001, 1);
-        test(11001, 2);
-        test(1000, 1);
-        test(1000, 1);
-        test(1000, 2);
-        test(100, 1);
-        test(100, 1);
-        test(100, 2);
-        test(1000, 1);
-        test(1000, 1);
-        test(1000, 2);
-        test(100, 1);
-        test(100, 1);
-        test(100, 2);
-        test(10001, 1);
-        test(10001, 1);
-        test(10001, 2);
-        test(1001, 1);
-        test(1001, 1);
-        test(1001, 2);
-        test(10001, 1);
-        test(10001, 1);
-        test(10001, 2);
-        test(1001, 1);
-        test(1001, 1);
-        test(1001, 2);
-        test(10001, 1);
-        test(10001, 1);
-        test(10001, 2);
-        test(1001, 1);
-        test(1001, 1);
-        test(1001, 2);
+        for a in 1..30 {
+            for b in 1..30 {
+                test(a*3+13, b+7);
+                test(a*127+13, b*3+7);
+                test(a*3127+17, b*14+8);
+                test(a*7127+19, b*115+9);
+                test(a*9127+19, b*1116+9);
+            }
+        }
         println!("done");
+    }
+
+    fn do_test_overflow(a: i32, b: i32) {
+        let mut cum_error = 0_i32;
+        checked_divide_with_cum_error(a, b, Rounding::Floor, &mut cum_error).unwrap();
+        checked_divide_with_cum_error(a, b, Rounding::Floor, &mut cum_error).unwrap();
+        checked_divide_with_cum_error(a, b, Rounding::Floor, &mut cum_error).unwrap();
+        checked_divide_with_cum_error(a, b, Rounding::Floor, &mut cum_error).unwrap();
+        let mut cum_error = 0_i32;
+        checked_divide_with_cum_error(a, b, Rounding::Ceiling, &mut cum_error).unwrap();
+        checked_divide_with_cum_error(a, b, Rounding::Ceiling, &mut cum_error).unwrap();
+        checked_divide_with_cum_error(a, b, Rounding::Ceiling, &mut cum_error).unwrap();
+        checked_divide_with_cum_error(a, b, Rounding::Ceiling, &mut cum_error).unwrap();
+        let mut cum_error = 0_i32;
+        checked_divide_with_cum_error(a, b, Rounding::Round, &mut cum_error).unwrap();
+        checked_divide_with_cum_error(a, b, Rounding::Round, &mut cum_error).unwrap();
+        checked_divide_with_cum_error(a, b, Rounding::Round, &mut cum_error).unwrap();
+        checked_divide_with_cum_error(a, b, Rounding::Round, &mut cum_error).unwrap();
+        let mut cum_error = 0_i32;
+        checked_divide_with_cum_error(a, b, Rounding::TowardsZero, &mut cum_error).unwrap();
+        checked_divide_with_cum_error(a, b, Rounding::TowardsZero, &mut cum_error).unwrap();
+        checked_divide_with_cum_error(a, b, Rounding::TowardsZero, &mut cum_error).unwrap();
+        checked_divide_with_cum_error(a, b, Rounding::TowardsZero, &mut cum_error).unwrap();
+        let mut cum_error = 0_i32;
+        checked_divide_with_cum_error(a, b, Rounding::AwayFromZero, &mut cum_error).unwrap();
+        checked_divide_with_cum_error(a, b, Rounding::AwayFromZero, &mut cum_error).unwrap();
+        checked_divide_with_cum_error(a, b, Rounding::AwayFromZero, &mut cum_error).unwrap();
+        checked_divide_with_cum_error(a, b, Rounding::AwayFromZero, &mut cum_error).unwrap();
+    }
+
+    #[test]
+    fn test_overflow() {
+        do_test_overflow(i32::MAX - 100, i32::MAX);
+        do_test_overflow(i32::MIN + 100, i32::MIN);
+        do_test_overflow(i32::MAX - 100, i32::MIN);
+        do_test_overflow(i32::MIN + 100, i32::MAX);
+
+        do_test_overflow(i32::MAX / 2, i32::MAX);
+        do_test_overflow(i32::MIN / 2, i32::MIN);
+        do_test_overflow(i32::MAX / 2, i32::MIN);
+        do_test_overflow(i32::MIN / 2, i32::MAX);
+
+        do_test_overflow(i32::MAX / 3, i32::MAX);
+        do_test_overflow(i32::MIN / 3, i32::MIN);
+        do_test_overflow(i32::MAX / 3, i32::MIN);
+        do_test_overflow(i32::MIN / 3, i32::MAX);
+
+        do_test_overflow(i32::MAX / 3 * 2, i32::MAX);
+        do_test_overflow(i32::MIN / 3 * 2, i32::MIN);
+        do_test_overflow(i32::MAX / 3 * 2, i32::MIN);
+        do_test_overflow(i32::MIN / 3 * 2, i32::MAX);
     }
 }

@@ -1,5 +1,5 @@
 [package]
-name = "int-div-cum-err"
+name = "int-div-cum-error"
 version = "0.1.0"
 edition = "2021"
 

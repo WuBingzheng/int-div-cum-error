@@ -1,166 +1,244 @@
-#[derive(Clone, Copy, Debug)]
+//! Integer division with rounding kind and cumulative error.
+//!
+//!
+//!
+
+/// Rounding kinds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Rounding {
+    /// towards the nearest integer
     Round,
+    /// towards negative infinity
     Floor,
+    /// towards positive infinity
     Ceiling,
+    /// towards zero
     TowardsZero,
+    /// away from zero
     AwayFromZero,
 }
 
-pub fn checked_divide(left: i32, right: i32, rounding: Rounding)
-    -> Option<i32>
-{
-    let Some(q) = left.checked_div(right) else {
-        return None;
-    };
+/// Checked division with rounding kind specified.
+///
+/// Return `None` if divided by 0 or overflow occurrs, or `Some(int)` where `int`
+/// is the type of `left` and `right`, which is some primitive signed integer type,
+/// such as `i8`, `i16`, `132`, `i64`, or `i128`.
+#[macro_export]
+macro_rules! checked_divide {
+    ($left:expr, $right:expr, $rounding:expr) => {
+        'a: {
+            let Some(q) = $left.checked_div($right) else {
+                break 'a None;
+            };
 
-    let remain = left % right;
-    if remain == 0 {
-        return Some(q);
-    }
+            let remain = $left % $right;
+            if remain == 0 {
+                break 'a Some(q);
+            }
 
-    Some(match rounding {
-        Rounding::Floor => {
-            if (left ^ right) > 0 {
-                q
-            } else {
-                q - 1
-            }
-        }
-        Rounding::Ceiling => {
-            if (left ^ right) > 0 {
-                q + 1
-            } else {
-                q
-            }
-        }
-        Rounding::Round => {
-            if remain.unsigned_abs() >= right.unsigned_abs() / 2 {
-                if (left ^ right) > 0 {
-                    q + 1
-                } else {
-                    q - 1
+            Some(match $rounding {
+                Rounding::Floor => {
+                    if ($left ^ $right) > 0 {
+                        q
+                    } else {
+                        q - 1
+                    }
                 }
-            } else {
-                q
-            }
+                Rounding::Ceiling => {
+                    if ($left ^ $right) > 0 {
+                        q + 1
+                    } else {
+                        q
+                    }
+                }
+                Rounding::Round => {
+                    if remain.unsigned_abs() >= $right.unsigned_abs() / 2 {
+                        if ($left ^ $right) > 0 {
+                            q + 1
+                        } else {
+                            q - 1
+                        }
+                    } else {
+                        q
+                    }
+                }
+                Rounding::TowardsZero => {
+                    q
+                }
+                Rounding::AwayFromZero => {
+                    if ($left ^ $right) > 0 {
+                        q + 1
+                    } else {
+                        q - 1
+                    }
+                }
+            })
         }
-        Rounding::TowardsZero => {
-            q
-        }
-        Rounding::AwayFromZero => {
-            if (left ^ right) > 0 {
-                q + 1
-            } else {
-                q - 1
-            }
-        }
-    })
+    }
+}
+
+pub fn checked_divide_i8(lhs: i8, rhs: i8, rounding: Rounding) -> Option<i8> {
+    checked_divide!(lhs, rhs, rounding)
+}
+pub fn checked_divide_i16(lhs: i16, rhs: i16, rounding: Rounding) -> Option<i16> {
+    checked_divide!(lhs, rhs, rounding)
+}
+pub fn checked_divide_i32(lhs: i32, rhs: i32, rounding: Rounding) -> Option<i32> {
+    checked_divide!(lhs, rhs, rounding)
+}
+pub fn checked_divide_i64(lhs: i64, rhs: i64, rounding: Rounding) -> Option<i64> {
+    checked_divide!(lhs, rhs, rounding)
+}
+pub fn checked_divide_i128(lhs: i128, rhs: i128, rounding: Rounding) -> Option<i128> {
+    checked_divide!(lhs, rhs, rounding)
 }
 
 // return: abs(a + b) < abs(b)
-fn add_cmp_abs(a: i32, b: i32) -> bool {
-    match a.checked_add(b) {
-        None => false,
-        Some(n) => n.unsigned_abs() < b.unsigned_abs(),
+#[allow(unused_macros)]
+macro_rules! add_cmp_abs {
+    ($a:expr, $b:expr) => {
+        match $a.checked_add($b) {
+            None => false,
+            Some(n) => n.unsigned_abs() < $b.unsigned_abs(),
+        }
     }
 }
 
 // return: abs(a - b) < abs(b)
-fn sub_cmp_abs(a: i32, b: i32) -> bool {
-    match a.checked_sub(b) {
-        None => false,
-        Some(n) => n.unsigned_abs() < b.unsigned_abs(),
+#[allow(unused_macros)]
+macro_rules! sub_cmp_abs {
+    ($a:expr, $b:expr) => {
+        match $a.checked_sub($b) {
+            None => false,
+            Some(n) => n.unsigned_abs() < $b.unsigned_abs(),
+        }
     }
 }
 
-pub fn checked_divide_with_cum_error(left: i32, right: i32, rounding: Rounding, cum_error: &mut i32)
-    -> Option<i32>
+/// Checked division with rounding kind and cumulative error specified.
+///
+/// Return `None` if divided by 0 or overflow occurrs, or `Some(int)` where `int`
+/// is the type of `left` and `right`, which is some primitive signed integer type,
+/// such as `i8`, `i16`, `132`, `i64`, or `i128`.
+///
+/// The `$cum_error` is cumulative error, which is in `&mut int` type.
+/// See [the module-level documentation](index.html) for more information.
+#[macro_export]
+macro_rules! checked_divide_with_cum_error {
+    ($left:expr, $right:expr, $rounding:expr, $cum_error:expr) => {
+        'a: {
+            let Some(mut q) = $left.checked_div($right) else {
+                break 'a None;
+            };
+
+            let remain = $left % $right;
+            if remain == 0 {
+                break 'a Some(q);
+            }
+
+            let Some(tmpsum) = $cum_error.checked_add(remain) else {
+                if ($left ^ $right) > 0 {
+                    *$cum_error += remain - $right;
+                    break 'a Some(q + 1);
+                } else {
+                    *$cum_error += remain + $right;
+                    break 'a Some(q - 1);
+                }
+            };
+            *$cum_error = tmpsum;
+
+            match $rounding {
+                Rounding::Floor => {
+                    if ($left ^ $right) > 0 {
+                        if $cum_error.unsigned_abs() >= $right.unsigned_abs() {
+                            *$cum_error -= $right;
+                            q += 1;
+                        }
+                    } else {
+                        if add_cmp_abs!(*$cum_error, $right) {
+                            *$cum_error += $right;
+                            q -= 1;
+                        }
+                    }
+                }
+                Rounding::Ceiling => {
+                    if ($left ^ $right) > 0 {
+                        if sub_cmp_abs!(*$cum_error, $right) {
+                            *$cum_error -= $right;
+                            q += 1;
+                        }
+                    } else {
+                        if $cum_error.unsigned_abs() >= $right.unsigned_abs() {
+                            *$cum_error += $right;
+                            q -= 1;
+                        }
+                    }
+                }
+                Rounding::Round => {
+                    if $cum_error.unsigned_abs() >= $right.unsigned_abs() / 2 {
+                        if ($left ^ $right) > 0 {
+                            *$cum_error -= $right;
+                            q += 1;
+                        } else {
+                            *$cum_error += $right;
+                            q -= 1;
+                        }
+                    }
+                }
+                Rounding::TowardsZero => {
+                    if $cum_error.unsigned_abs() >= $right.unsigned_abs() {
+                        if ($left ^ $right) > 0 {
+                            *$cum_error -= $right;
+                            q += 1;
+                        } else {
+                            *$cum_error += $right;
+                            q -= 1;
+                        }
+                    }
+                }
+                Rounding::AwayFromZero => {
+                    if ($left ^ $right) > 0 {
+                        if sub_cmp_abs!(*$cum_error, $right) {
+                            *$cum_error -= $right;
+                            q += 1;
+                        }
+                    } else {
+                        if add_cmp_abs!(*$cum_error, $right) {
+                            *$cum_error += $right;
+                            q -= 1;
+                        }
+                    }
+                }
+            }
+            Some(q)
+        }
+    }
+}
+
+pub fn checked_divide_with_cum_error_i8(lhs: i8, rhs: i8,
+    rounding: Rounding, cum_error: &mut i8) -> Option<i8>
 {
-    let Some(mut q) = left.checked_div(right) else {
-        return None;
-    };
-
-    let remain = left % right;
-    if remain == 0 {
-        return Some(q);
-    }
-
-    let Some(tmpsum) = cum_error.checked_add(remain) else {
-        if (left ^ right) > 0 {
-            *cum_error += remain - right;
-            return Some(q + 1);
-        } else {
-            *cum_error += remain + right;
-            return Some(q - 1);
-        }
-    };
-    *cum_error = tmpsum;
-
-    match rounding {
-        Rounding::Floor => {
-            if (left ^ right) > 0 {
-                if cum_error.unsigned_abs() >= right.unsigned_abs() {
-                    *cum_error -= right;
-                    q += 1;
-                }
-            } else {
-                if add_cmp_abs(*cum_error, right) {
-                    *cum_error += right;
-                    q -= 1;
-                }
-            }
-        }
-        Rounding::Ceiling => {
-            if (left ^ right) > 0 {
-                if sub_cmp_abs(*cum_error, right) {
-                    *cum_error -= right;
-                    q += 1;
-                }
-            } else {
-                if cum_error.unsigned_abs() >= right.unsigned_abs() {
-                    *cum_error += right;
-                    q -= 1;
-                }
-            }
-        }
-        Rounding::Round => {
-            if cum_error.unsigned_abs() >= right.unsigned_abs() / 2 {
-                if (left ^ right) > 0 {
-                    *cum_error -= right;
-                    q += 1;
-                } else {
-                    *cum_error += right;
-                    q -= 1;
-                }
-            }
-        }
-        Rounding::TowardsZero => {
-            if cum_error.unsigned_abs() >= right.unsigned_abs() {
-                if (left ^ right) > 0 {
-                    *cum_error -= right;
-                    q += 1;
-                } else {
-                    *cum_error += right;
-                    q -= 1;
-                }
-            }
-        }
-        Rounding::AwayFromZero => {
-            if (left ^ right) > 0 {
-                if sub_cmp_abs(*cum_error, right) {
-                    *cum_error -= right;
-                    q += 1;
-                }
-            } else {
-                if add_cmp_abs(*cum_error, right) {
-                    *cum_error += right;
-                    q -= 1;
-                }
-            }
-        }
-    }
-    Some(q)
+    checked_divide_with_cum_error!(lhs, rhs, rounding, cum_error)
+}
+pub fn checked_divide_with_cum_error_i16(lhs: i16, rhs: i16,
+    rounding: Rounding, cum_error: &mut i16) -> Option<i16>
+{
+    checked_divide_with_cum_error!(lhs, rhs, rounding, cum_error)
+}
+pub fn checked_divide_with_cum_error_i32(lhs: i32, rhs: i32,
+    rounding: Rounding, cum_error: &mut i32) -> Option<i32>
+{
+    checked_divide_with_cum_error!(lhs, rhs, rounding, cum_error)
+}
+pub fn checked_divide_with_cum_error_i64(lhs: i64, rhs: i64,
+    rounding: Rounding, cum_error: &mut i64) -> Option<i64>
+{
+    checked_divide_with_cum_error!(lhs, rhs, rounding, cum_error)
+}
+pub fn checked_divide_with_cum_error_i128(lhs: i128, rhs: i128,
+    rounding: Rounding, cum_error: &mut i128) -> Option<i128>
+{
+    checked_divide_with_cum_error!(lhs, rhs, rounding, cum_error)
 }
 
 #[cfg(test)]
@@ -176,12 +254,12 @@ mod tests {
         while isum.unsigned_abs() < a.unsigned_abs() {
             let ix = i0 + i1;
 
-            ret += checked_divide_with_cum_error(ix, b, rounding, &mut cum_error).unwrap();
+            ret += checked_divide_with_cum_error!(ix, b, rounding, &mut cum_error).unwrap();
             i0 = i1;
             i1 = ix;
             isum += ix;
 
-            let q = checked_divide(isum, b, rounding).unwrap();
+            let q = checked_divide!(isum, b, rounding).unwrap();
             let r = isum - q * b;
             assert_eq!(q, ret);
             assert_eq!(r, cum_error);
@@ -223,30 +301,30 @@ mod tests {
 
     fn do_test_overflow(a: i32, b: i32) {
         let mut cum_error = 0_i32;
-        checked_divide_with_cum_error(a, b, Rounding::Floor, &mut cum_error).unwrap();
-        checked_divide_with_cum_error(a, b, Rounding::Floor, &mut cum_error).unwrap();
-        checked_divide_with_cum_error(a, b, Rounding::Floor, &mut cum_error).unwrap();
-        checked_divide_with_cum_error(a, b, Rounding::Floor, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::Floor, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::Floor, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::Floor, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::Floor, &mut cum_error).unwrap();
         let mut cum_error = 0_i32;
-        checked_divide_with_cum_error(a, b, Rounding::Ceiling, &mut cum_error).unwrap();
-        checked_divide_with_cum_error(a, b, Rounding::Ceiling, &mut cum_error).unwrap();
-        checked_divide_with_cum_error(a, b, Rounding::Ceiling, &mut cum_error).unwrap();
-        checked_divide_with_cum_error(a, b, Rounding::Ceiling, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::Ceiling, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::Ceiling, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::Ceiling, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::Ceiling, &mut cum_error).unwrap();
         let mut cum_error = 0_i32;
-        checked_divide_with_cum_error(a, b, Rounding::Round, &mut cum_error).unwrap();
-        checked_divide_with_cum_error(a, b, Rounding::Round, &mut cum_error).unwrap();
-        checked_divide_with_cum_error(a, b, Rounding::Round, &mut cum_error).unwrap();
-        checked_divide_with_cum_error(a, b, Rounding::Round, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::Round, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::Round, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::Round, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::Round, &mut cum_error).unwrap();
         let mut cum_error = 0_i32;
-        checked_divide_with_cum_error(a, b, Rounding::TowardsZero, &mut cum_error).unwrap();
-        checked_divide_with_cum_error(a, b, Rounding::TowardsZero, &mut cum_error).unwrap();
-        checked_divide_with_cum_error(a, b, Rounding::TowardsZero, &mut cum_error).unwrap();
-        checked_divide_with_cum_error(a, b, Rounding::TowardsZero, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::TowardsZero, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::TowardsZero, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::TowardsZero, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::TowardsZero, &mut cum_error).unwrap();
         let mut cum_error = 0_i32;
-        checked_divide_with_cum_error(a, b, Rounding::AwayFromZero, &mut cum_error).unwrap();
-        checked_divide_with_cum_error(a, b, Rounding::AwayFromZero, &mut cum_error).unwrap();
-        checked_divide_with_cum_error(a, b, Rounding::AwayFromZero, &mut cum_error).unwrap();
-        checked_divide_with_cum_error(a, b, Rounding::AwayFromZero, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::AwayFromZero, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::AwayFromZero, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::AwayFromZero, &mut cum_error).unwrap();
+        checked_divide_with_cum_error!(a, b, Rounding::AwayFromZero, &mut cum_error).unwrap();
     }
 
     #[test]

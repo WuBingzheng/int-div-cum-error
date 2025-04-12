@@ -2,5 +2,13 @@
 name = "int-div-cum-error"
 version = "0.1.0"
 edition = "2021"
+authors = ["Wu Bingzheng <wubingzheng@gmail.com>"]
+description = "Primitive integer division with rounding kind and cumulative error."
+license = "MIT"
+repository = "https://github.com/WuBingzheng/int-div-cum-error"
+documentation = "https://docs.rs/int-div-cum-error"
+keywords = ["integer-division"]
+categories = ["mathematics", "finance", "algorithms"]
 
 [dependencies]
+num-traits = "0.2"

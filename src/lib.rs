@@ -27,7 +27,7 @@
 //!
 //! This library implements this functionality.
 
-use num_traits::{int::PrimInt, sign::Signed, identities::ConstOne};
+use num_traits::{int::PrimInt, sign::Signed, identities::{ConstOne, ConstZero}};
 
 /// Rounding kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -43,6 +43,35 @@ pub enum Rounding {
     TowardsZero,
     /// away from zero
     AwayFromZero,
+}
+
+use std::ops::{AddAssign, SubAssign};
+
+/// Alias of trait set for primitive signed integers.
+pub trait PrimSignedInt: PrimInt + Signed + ConstOne + ConstZero + AddAssign + SubAssign {
+    const MAX: Self;
+    const MIN: Self;
+}
+
+impl PrimSignedInt for i8 {
+    const MAX: Self = i8::MAX;
+    const MIN: Self = i8::MIN;
+}
+impl PrimSignedInt for i16 {
+    const MAX: Self = i16::MAX;
+    const MIN: Self = i16::MIN;
+}
+impl PrimSignedInt for i32 {
+    const MAX: Self = i32::MAX;
+    const MIN: Self = i32::MIN;
+}
+impl PrimSignedInt for i64 {
+    const MAX: Self = i64::MAX;
+    const MIN: Self = i64::MIN;
+}
+impl PrimSignedInt for i128 {
+    const MAX: Self = i128::MAX;
+    const MIN: Self = i128::MIN;
 }
 
 // return: abs(a) >= abs(b)
@@ -118,8 +147,15 @@ where I: PrimInt + Signed
 ///
 /// `I` is some primitive signed integer type,
 /// such as `i8`, `i16`, `132`, `i64`, or `i128`.
-pub fn checked_divide<I>(left: I, right: I, rounding: Rounding) -> Option<I>
-where I: PrimInt + Signed + ConstOne
+///
+/// This is a common implementation for integer division and rouding.
+/// It has no relation to the cumulative error in this crate.
+pub fn checked_divide_with_rounding<I>(
+    left: I,
+    right: I,
+    rounding: Rounding,
+) -> Option<I>
+where I: PrimSignedInt
 {
     let Some(q) = left.checked_div(&right) else {
         return None;
@@ -177,10 +213,15 @@ where I: PrimInt + Signed + ConstOne
 /// such as `i8`, `i16`, `132`, `i64`, or `i128`.
 ///
 /// See [the module-level documentation](index.html) for more information
-/// of `cum_error`. If you do not need `cum_error`, then use [`checked_divide`]
-/// which might be a little faster.
-pub fn checked_divide_with_cum_error<I>(left: I, right: I, rounding: Rounding, cum_error: &mut I) -> Option<I>
-where I: PrimInt + Signed + ConstOne + std::ops::AddAssign + std::ops::SubAssign
+/// of `cum_error`. If you do not need `cum_error`, then use
+/// [`checked_divide_with_rounding`] which might be a little faster.
+pub fn checked_divide_with_cum_error<I>(
+    left: I,
+    right: I,
+    rounding: Rounding,
+    cum_error: &mut I,
+) -> Option<I>
+where I: PrimSignedInt
 {
     let Some(mut q) = left.checked_div(&right) else {
         return None;
@@ -268,6 +309,23 @@ where I: PrimInt + Signed + ConstOne + std::ops::AddAssign + std::ops::SubAssign
     Some(q)
 }
 
+/// Wrapper of [`checked_divide_with_rounding`] and [`checked_divide_with_cum_error`] functions.
+///
+/// It calls `checked_divide_with_rounding` if `cum_error` is `None`, or calls
+/// `checked_divide_with_cum_error` if not None.
+pub fn checked_divide<I>(
+    left: I,
+    right: I,
+    rounding: Rounding,
+    cum_error: Option<&mut I>,
+) -> Option<I>
+where I: PrimSignedInt
+{
+    match cum_error {
+        Some(cum_error) => checked_divide_with_cum_error(left, right, rounding, cum_error),
+        None => checked_divide_with_rounding(left, right, rounding),
+    }
+}
 
 #[cfg(test)]
 mod tests {

@@ -17,7 +17,7 @@
 //!
 //! Let's use `cum_error` to denote the cumulative error.
 //!
-//! - The initial value is `cum_error = 0`;
+//! - The initial value is cum_error = 0;
 //! - (20 + 0) / 3 = 7, cum_error = -1;
 //! - (20 - 1) / 3 = 6, cum_error = 1;
 //! - (20 + 1) / 3 = 7, cum_error = 0.
@@ -25,9 +25,27 @@
 //! The final result is 7 + 6 + 7 = 20, which is equal to the result of
 //! the single division.
 //!
+//! ```
+//! use int_div_cum_error::*;
+//!
+//! let mut cum_error = 0;
+//!
+//! let q = checked_divide_with_cum_error(20, 3, Rounding::Round, &mut cum_error).unwrap();
+//! assert_eq!(q, 7);
+//! assert_eq!(cum_error, -1);
+//!
+//! let q = checked_divide_with_cum_error(20, 3, Rounding::Round, &mut cum_error).unwrap();
+//! assert_eq!(q, 6);
+//! assert_eq!(cum_error, 1);
+//!
+//! let q = checked_divide_with_cum_error(20, 3, Rounding::Round, &mut cum_error).unwrap();
+//! assert_eq!(q, 7);
+//! assert_eq!(cum_error, 0);
+//! ```
+//!
 //! This library implements this functionality.
 
-use num_traits::{int::PrimInt, sign::Signed, identities::{ConstOne, ConstZero}};
+use num_traits::{int::PrimInt, sign::Signed, identities::{ConstOne, ConstZero}, CheckedAdd};
 
 /// Rounding kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -49,73 +67,56 @@ use std::ops::{AddAssign, SubAssign};
 
 /// Alias of trait set for primitive signed integers.
 pub trait PrimSignedInt: PrimInt + Signed + ConstOne + ConstZero + AddAssign + SubAssign {
-    const MAX: Self;
-    const MIN: Self;
+    fn unsigned_abs(self) -> impl PrimInt;
 }
 
 impl PrimSignedInt for i8 {
-    const MAX: Self = i8::MAX;
-    const MIN: Self = i8::MIN;
+    fn unsigned_abs(self) -> impl PrimInt {
+        i8::unsigned_abs(self)
+    }
 }
 impl PrimSignedInt for i16 {
-    const MAX: Self = i16::MAX;
-    const MIN: Self = i16::MIN;
+    fn unsigned_abs(self) -> impl PrimInt {
+        i16::unsigned_abs(self)
+    }
 }
 impl PrimSignedInt for i32 {
-    const MAX: Self = i32::MAX;
-    const MIN: Self = i32::MIN;
+    fn unsigned_abs(self) -> impl PrimInt {
+        i32::unsigned_abs(self)
+    }
 }
 impl PrimSignedInt for i64 {
-    const MAX: Self = i64::MAX;
-    const MIN: Self = i64::MIN;
+    fn unsigned_abs(self) -> impl PrimInt {
+        i64::unsigned_abs(self)
+    }
 }
 impl PrimSignedInt for i128 {
-    const MAX: Self = i128::MAX;
-    const MIN: Self = i128::MIN;
-}
-
-// return: abs(a) >= abs(b)
-// notice that we can call abs(I::MIN) which makes overflow
-fn cmp_abs_ge<I>(a: I, b: I) -> bool
-where I: PrimInt + Signed
-{
-    if a.is_positive() {
-        if b.is_positive() {
-            a >= b
-        } else {
-            -a <= b
-        }
-    } else {
-        if b.is_positive() {
-            a <= -b
-        } else {
-            a <= b
-        }
+    fn unsigned_abs(self) -> impl PrimInt {
+        i128::unsigned_abs(self)
     }
 }
 
-// return: abs(a) >= abs(b) / 2
-fn cmp_abs_half_ge<I>(a: I, b: I) -> bool
-where I: PrimInt + Signed
+// return: abs(a) >= abs(b)
+fn cmp_abs_ge<I>(a: I, b: I) -> bool
+where I: PrimSignedInt
 {
-    if a.is_positive() {
-        if b.is_positive() {
-            a >= b >> 1
-        } else {
-            -a <= b >> 1
-        }
-    } else {
-        if b.is_positive() {
-            a <= -b >> 1
-        } else {
-            a <= b >> 1
-        }
+    a.unsigned_abs() >= b.unsigned_abs()
+}
+
+// return: abs(a) * 2 >= abs(b)
+fn cmp_abs_half_ge<I>(a: I, b: I) -> bool
+where I: PrimSignedInt
+{
+    let a = a.unsigned_abs();
+    match a.checked_add(&a) {
+        Some(a2) => a2 >= b.unsigned_abs(),
+        None => true,
     }
 }
 
 // return: abs(a + b) < abs(b)
 fn add_cmp_abs_lt<I>(a: I, b: I) -> bool
-where I: PrimInt + Signed
+where I: PrimSignedInt
 {
     match a.checked_add(&b) {
         None => false,
@@ -125,7 +126,7 @@ where I: PrimInt + Signed
 
 // return: abs(a - b) < abs(b)
 fn sub_cmp_abs_lt<I>(a: I, b: I) -> bool
-where I: PrimInt + Signed
+where I: PrimSignedInt
 {
     match a.checked_sub(&b) {
         None => false,
@@ -135,7 +136,7 @@ where I: PrimInt + Signed
 
 // return: a and b have same sign
 fn same_sign<I>(a: I, b: I) -> bool
-where I: PrimInt + Signed
+where I: PrimSignedInt
 {
     (a ^ b).is_positive()
 }
@@ -345,7 +346,7 @@ mod tests {
             i1 = ix;
             isum += ix;
 
-            let q = checked_divide(isum, b, rounding).unwrap();
+            let q = checked_divide_with_rounding(isum, b, rounding).unwrap();
             let r = isum - q * b;
             assert_eq!(q, ret);
             assert_eq!(r, cum_error);

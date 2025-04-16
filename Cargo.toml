@@ -1,6 +1,6 @@
 [package]
 name = "int-div-cum-error"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Wu Bingzheng <wubingzheng@gmail.com>"]
 description = "Primitive integer division with rounding kind and cumulative error."

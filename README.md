@@ -19,13 +19,31 @@ reduce or even avoid the final error.
 
 Let's use `cum_error` to denote the cumulative error.
 
-- The initial value is `cum_error = 0`;
+- The initial value is cum_error = 0;
 - (20 + 0) / 3 = 7, cum_error = -1;
 - (20 - 1) / 3 = 6, cum_error = 1;
 - (20 + 1) / 3 = 7, cum_error = 0.
 
 The final result is 7 + 6 + 7 = 20, which is equal to the result of
 the single division.
+
+```rust
+use int_div_cum_error::*;
+
+let mut cum_error = 0;
+
+let q = checked_divide_with_cum_error(20, 3, Rounding::Round, &mut cum_error).unwrap();
+assert_eq!(q, 7);
+assert_eq!(cum_error, -1);
+
+let q = checked_divide_with_cum_error(20, 3, Rounding::Round, &mut cum_error).unwrap();
+assert_eq!(q, 6);
+assert_eq!(cum_error, 1);
+
+let q = checked_divide_with_cum_error(20, 3, Rounding::Round, &mut cum_error).unwrap();
+assert_eq!(q, 7);
+assert_eq!(cum_error, 0);
+```
 
 This library implements this functionality.
 
